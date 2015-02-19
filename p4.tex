@@ -1,0 +1,75 @@
+\documentclass[11pt]{article} 
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{graphicx}
+\usepackage{mathtools}
+\usepackage[]{algorithm2e}
+\DeclarePairedDelimiter\ceil{\lceil}{\rceil}
+\DeclarePairedDelimiter\floor{\lfloor}{\rfloor}
+\title{TMA4280: Report on a case study of parallel summation}
+\author{Snorre Alexander Berthelsen Husby}
+\begin{document} 
+\maketitle
+\begin{abstract}
+We do stuff. Clever stuff.
+\end{abstract}
+\newpage
+\section{Introduction}
+In this report we consider the infinite sum
+\begin{equation}\label{eqn:model_problem}
+S = \sum_{i=1}^\infty v(i) = \frac{\pi^2}{6}
+\end{equation}
+and the partial sum
+\begin{equation}\label{eqn:partial_sum}
+S_k = \sum_{i=1}^{2^k} v(i)
+\end{equation}
+where
+\begin{equation}\label{eqn:vector}
+v(i) = \frac{1}{i^2}
+\end{equation}
+for integers $k>0$. We will use two parallel paradigms, OpenMP and MPI, to compute \eqref{eqn:partial_sum} using $P$ processors. We will do this by first initiating the vector $\bar{v}$ with elements \eqref{eqn:vector}, and then summing the vector elements. We will compare the performance of these two separately and combined against the naive, single-processor method.
+\subsection{OpenMP and MPI}
+\textbf{OpenMP} is a shared memory multiprocessor API that is very simple to implement when given existing code. A master thread simply forks into several parallel slave threads, where a task is divided among them. The memory is shared by all threads.
+
+\textbf{MPI} is a distributed memory multiprocessor communications protocol, which unlike OpenMP will usually require code to be specifically written to accommodate it. Unlike OpenMP, each processor generates a separate instance of the code and will have its own memory during runtime. The processors only communicate through message passing. 
+\subsection{Memory and FLOPs}
+\subsubsection{Generation of $\bar{v}$}
+We can easily see from \eqref{eqn:vector} that it will require 2 floating point operations for each sum element (one division and one multiplication), for a total of $2^{k+1}$ floating point operations for the entire vector. 
+\subsubsection{Computing $S_k$}
+Assuming the vector $\bar{v}$ has been generated, computing \eqref{eqn:partial_sum} will require $2^k$ floating point operations. 
+\subsubsection{Memory requirements}
+We use double precision for \eqref{eqn:vector}, so that we will require a total of $8 \times 2^k = 2^{k+3}$ bytes of storage for the vector $\bar{v}$. Using a distributed memory model like MPI, if we assume that each process gets an equal number of elements and there are $P_n=2^n$ processors, each processor will require $2^{k+3-n}$ bytes of storage.  
+\section{The algorithms}
+
+We present the algorithms used to compute \eqref{eqn:partial_sum}. Let $\bar{v}_k$ indicate the vector of length $2^k$ with elements \eqref{eqn:vector}.
+\subsection{Single-processor and OpenMP}
+\begin{algorithm}[H]
+\KwData{length of $\bar{v}_k$}
+\KwResult{partial sum \eqref{eqn:partial_sum}}
+ initialise $\bar{v}_k$,$s=0$\;
+ \For{all $i \in [0,2^k]$}{
+	$s += \bar{v}_k (i)$ 
+ }
+ report difference $S-s$
+\end{algorithm}
+For OpenMP the single for-loop will be parallelised.
+\subsection{MPI and hybrid}
+\begin{algorithm}[H]
+\KwData{length of $\bar{v}_k$}
+\KwResult{partial sum \eqref{eqn:partial_sum}}
+\If{processID==0}{
+ initialise $\bar{v}_k$,$s=0$\;}
+ partition and distribute $\bar{v}_k$\;
+ \For{all partitioned elements of $\bar{v}_k$}{
+	$s_n  += \bar{v}_k (i)$ 
+ }\
+ \If{processID==0}{
+ $s = \sum_{i=1}^n s_i$;
+ report difference $S-s$
+ }
+\end{algorithm}
+In the hybrid implementation we use OpenMP to parallelise the for-loop. MPI has two very convenient functions to guarantee the behaviour we want, \textit{MPI\_Scatter} and \textit{MPI\_Reduce}. The former partitions a buffer into equally-sized chunks and distributes them to all other processes, while the latter gathers data from all other processes and perform some operation on the data to end up with a single value. For \textit{MPI\_Scatter} we simply scatter $\bar{v}_k$ among all the processors, and use \textit{MPI\_Reduce} to sum all the minor partial sums each processor has computed into \eqref{eqn:partial_sum}.
+\section{Results and discussion}
+NEED SOME WAY TO COMPUTE THE DIFFERENCE IN A SENSIBLE MANNER, AND ALSO DEBUG BUTCHER
+\end{document}
